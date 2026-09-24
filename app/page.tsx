@@ -1,0 +1,54 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { AlertTriangle, ArrowUpRight, CheckCircle2, CircleUserRound, LockKeyhole, LogOut, Search, Sparkles } from 'lucide-react';
+
+const API = process.env.NEXT_PUBLIC_BE_URL ?? 'http://localhost:4000';
+type Role = 'PM' | 'INTERNAL' | 'CLIENT';
+type User = { name: string; email: string; role: Role; department?: string; projectId?: string | null };
+type Task = { id: string; title: string; description: string; department: string; status: string; version: number; assignee?: { name: string } | null; dependencies: { dependsOn: { title: string; status: string } }[] };
+
+export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [metrics, setMetrics] = useState({ completion: 0, total: 0, done: 0 });
+  const [email, setEmail] = useState('pm@nodewave.test');
+  const [search, setSearch] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  async function login() {
+    setLoading(true); setError('');
+    const response = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'password' }) });
+    const data = await response.json();
+    if (!response.ok) setError(data.error); else { localStorage.setItem('token', data.token); setUser(data.user); }
+    setLoading(false);
+  }
+
+  async function load() {
+    const token = localStorage.getItem('token');
+    if (!token || !user?.projectId) return;
+    const params = new URLSearchParams({ pageSize: '50' });
+    if (search) params.set('search', search);
+    const response = await fetch(`${API}/projects/${user.projectId}/overview?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await response.json();
+    if (!response.ok) { setError(data.error ?? 'Unable to load project data.'); return; }
+    setTasks(data.tasks); setMetrics(data.metrics);
+  }
+
+  async function changeStatus(task: Task, status: string) {
+    const token = localStorage.getItem('token'); if (!token) return;
+    setError('');
+    const response = await fetch(`${API}/tasks/${task.id}/status`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ status, version: task.version }) });
+    const data = await response.json();
+    if (!response.ok) { setError(data.error ?? 'Status update failed.'); return; }
+    await load();
+  }
+
+  useEffect(() => { if (user) load(); }, [user, search]);
+
+  if (!user) return <main className="auth"><div className="auth-copy"><span className="eyebrow"><Sparkles size={14}/> NODEWAVE / DELIVERY OS</span><h1>Make progress visible.</h1><p>One calm workspace for the people shaping, building, and approving high-value work.</p><div className="signal"><span>LIVE DEMO</span><b>Atlas Commerce Platform</b></div></div><section className="login"><div className="brand-mark">N</div><h2>Welcome back</h2><p>Use a seeded role to explore the workspace.</p><label>Email<select value={email} onChange={event => setEmail(event.target.value)}><option>pm@nodewave.test</option><option>frontend@nodewave.test</option><option>client@atlas.test</option><option>ui@nodewave.test</option></select></label><button onClick={login} disabled={loading}>{loading ? 'Signing in...' : 'Enter workspace'} <ArrowUpRight size={17}/></button>{error && <div className="error">{error}</div>}<small>Demo password: <b>password</b></small></section></main>;
+
+  const isClient = user.role === 'CLIENT';
+  return <main className="app"><header><div className="wordmark"><span className="brand-mark">N</span><span>Delivery OS</span></div><div className="header-user"><div><b>{user.name}</b><small>{user.role} · {user.department ?? 'External'}</small></div><button className="icon-button" title="Sign out" onClick={() => { localStorage.removeItem('token'); setUser(null); }}><LogOut size={18}/></button></div></header><div className="content"><div className="intro"><div><span className="eyebrow">{isClient ? 'CLIENT VIEW' : 'PROJECT CONTROL ROOM'}</span><h1>{isClient ? 'Your delivery, at a glance.' : 'Atlas Commerce Platform'}</h1><p>{isClient ? 'A filtered view of the milestones your team can see.' : 'Keep dependencies unblocked and decisions moving.'}</p></div><div className="completion"><strong>{metrics.completion}%</strong><span>complete</span></div></div><section className="metrics"><div><small>VISIBLE TASKS</small><b>{metrics.total}</b></div><div><small>COMPLETED</small><b>{metrics.done}</b></div><div><small>BLOCKED</small><b>{tasks.filter(task => task.status === 'BLOCKED').length}</b></div><div><small>ACCESS</small><b>{isClient ? 'Filtered' : 'Full project'}</b></div></section><div className="board-head"><h2>{isClient ? 'Shared milestones' : 'Delivery board'}</h2><label className="search-box"><Search size={15}/><input value={search} onChange={event => setSearch(event.target.value)} placeholder="Search tasks" /></label><span><CircleUserRound size={16}/> {isClient ? 'Client-safe data' : 'Live project data'}</span></div>{error && <div className="error">{error}</div>}<section className="board">{['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE'].map(status => <div className="column" key={status}><div className="column-title"><span className={`dot ${status.toLowerCase()}`}/><b>{status.replace('_', ' ')}</b><small>{tasks.filter(task => task.status === status).length}</small></div>{tasks.filter(task => task.status === status).map(task => <article className="task" key={task.id}><div className="task-top"><span className="tag">{task.department.replace('_', ' ')}</span>{task.status === 'BLOCKED' && <LockKeyhole size={15}/>}</div><h3>{task.title}</h3><p>{task.description}</p>{task.dependencies.length > 0 && <div className="dependency"><AlertTriangle size={14}/><span>Waiting on {task.dependencies.filter(dependency => dependency.dependsOn.status !== 'DONE').map(dependency => dependency.dependsOn.title).join(', ') || 'completed inputs'}</span></div>}{!isClient && task.assignee && <small className="assignee">Assigned to {task.assignee.name}</small>}{user.role === 'INTERNAL' && task.assignee?.name === user.name && task.status !== 'DONE' && <button className="task-action" disabled={task.status === 'BLOCKED'} onClick={() => changeStatus(task, 'IN_PROGRESS')}>{task.status === 'BLOCKED' ? 'Blocked by dependencies' : 'Start task'}</button>}{task.status === 'DONE' && <CheckCircle2 className="done-icon" size={18}/>}</article>)}</div>)}</section></div></main>;
+}

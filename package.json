@@ -1,0 +1,5 @@
+{
+  "name": "nodewave-delivery-web", "private": true, "scripts": { "dev": "next dev", "build": "next build", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@tanstack/react-query": "^5.89.0", "axios": "^1.12.2", "next": "16.0.0", "react": "19.2.0", "react-dom": "19.2.0", "lucide-react": "^0.544.0" },
+  "devDependencies": { "@types/node": "^22.15.0", "@types/react": "^19.2.0", "@types/react-dom": "^19.2.0", "typescript": "^5.9.2" }
+}
